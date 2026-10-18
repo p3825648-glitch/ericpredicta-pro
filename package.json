@@ -1,1 +1,12 @@
-
+{
+  "name": "ericpredicta-pro",
+  "version": "1.0.0",
+  "description": "ERICPREDICTA PRO server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
