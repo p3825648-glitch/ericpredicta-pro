@@ -24,93 +24,42 @@ app.get("/", (req, res) => {
 
 app.get("/api/discover", async (req, res) => {
   try {
-    const response = await fetch(BET261_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html"
-      }
+    const page = await fetch(BET261_URL, {
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
-    if (!response.ok) {
-      throw new Error("Bet261 HTTP " + response.status);
-    }
+    const html = await page.text();
 
-    const html = await response.text();
-
-    const scripts = [
-      ...html.matchAll(
-        /<script[^>]+src=["']([^"']+)["']/gi
-      )
-    ].map(match => new URL(match[1], BET261_URL).href);
-
-    const keywords = [
-      "api",
-      "graphql",
-      "match",
-      "matches",
-      "result",
-      "results",
-      "score",
-      "standings",
-      "ranking",
-      "fixture",
-      "football",
-      "virtual",
-      "socket",
-      "websocket",
-      "http",
-      "endpoint"
+    const scriptMatches = [
+      ...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)
     ];
 
-    const results = [];
+    const scripts = scriptMatches.map(match =>
+      new URL(match[1], BET261_URL).href
+    );
+
+    const details = [];
 
     for (const scriptUrl of scripts) {
       try {
-        const scriptResponse = await fetch(scriptUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0"
-          }
+        const response = await fetch(scriptUrl, {
+          headers: { "User-Agent": "Mozilla/5.0" }
         });
 
-        if (!scriptResponse.ok) continue;
+        const content = await response.text();
 
-        const js = await scriptResponse.text();
-        const found = [];
-
-        for (const keyword of keywords) {
-          let start = 0;
-          let count = 0;
-
-          while (count < 5) {
-            const index = js.toLowerCase().indexOf(
-              keyword,
-              start
-            );
-
-            if (index === -1) break;
-
-            found.push({
-              keyword,
-              context: js.slice(
-                Math.max(0, index - 100),
-                Math.min(js.length, index + 200)
-              )
-            });
-
-            start = index + keyword.length;
-            count++;
-          }
-        }
-
-        if (found.length > 0) {
-          results.push({
-            script: scriptUrl,
-            matches: found
-          });
-        }
+        details.push({
+          url: scriptUrl,
+          status: response.status,
+          contentType: response.headers.get("content-type"),
+          contentLength: content.length,
+          beginning: content.slice(0, 300),
+          containsApi: /api|graphql/i.test(content),
+          containsMatch: /matches|fixtures|standings/i.test(content)
+        });
       } catch (error) {
-        results.push({
-          script: scriptUrl,
+        details.push({
+          url: scriptUrl,
           error: error.message
         });
       }
@@ -118,9 +67,10 @@ app.get("/api/discover", async (req, res) => {
 
     res.json({
       success: true,
-      pageStatus: response.status,
+      pageStatus: page.status,
+      htmlLength: html.length,
       scriptsFound: scripts.length,
-      possibleEndpoints: results
+      scriptDetails: details
     });
   } catch (error) {
     res.status(500).json({
@@ -133,14 +83,10 @@ app.get("/api/discover", async (req, res) => {
 app.get("/api/matches", (req, res) => {
   res.status(501).json({
     success: false,
-    message:
-      "Tsy mbola voamarina ny API maka ny résultats Bet261.",
-    nextStep: "/api/discover"
+    message: "Mbola tsy voamarina ny API misy ny résultats Bet261."
   });
 });
 
 app.listen(PORT, () => {
-  console.log(
-    "ERICPREDICTA PRO server started on port " + PORT
-  );
+  console.log("ERICPREDICTA PRO server started on port " + PORT);
 });
