@@ -3,6 +3,9 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
+const BET261_URL =
+  "https://bet261.mg/virtual/category/instant-league/8035/matches";
+
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -21,27 +24,43 @@ app.get("/", (req, res) => {
 
 app.get("/api/discover", async (req, res) => {
   try {
-    const url =
-      "https://bet261.mg/virtual/category/instant-league/8035/matches";
-
-    const response = await fetch(url, {
+    const response = await fetch(BET261_URL, {
       headers: {
         "User-Agent": "Mozilla/5.0",
         "Accept": "text/html"
       }
     });
 
+    if (!response.ok) {
+      throw new Error("Bet261 HTTP " + response.status);
+    }
+
     const html = await response.text();
 
     const scripts = [
-      ...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)
-    ].map(match => {
-      const src = match[1];
+      ...html.matchAll(
+        /<script[^>]+src=["']([^"']+)["']/gi
+      )
+    ].map(match => new URL(match[1], BET261_URL).href);
 
-      return src.startsWith("http")
-        ? src
-        : new URL(src, url).href;
-    });
+    const keywords = [
+      "api",
+      "graphql",
+      "match",
+      "matches",
+      "result",
+      "results",
+      "score",
+      "standings",
+      "ranking",
+      "fixture",
+      "football",
+      "virtual",
+      "socket",
+      "websocket",
+      "http",
+      "endpoint"
+    ];
 
     const results = [];
 
@@ -56,19 +75,44 @@ app.get("/api/discover", async (req, res) => {
         if (!scriptResponse.ok) continue;
 
         const js = await scriptResponse.text();
+        const found = [];
 
-        const paths = js.match(
-          /["'`](?:https?:\/\/[^"'`\s]+|\/[^"'`\s]*(?:api|graphql|match|result|virtual)[^"'`\s]*)["'`]/gi
-        ) || [];
+        for (const keyword of keywords) {
+          let start = 0;
+          let count = 0;
 
-        if (paths.length > 0) {
+          while (count < 5) {
+            const index = js.toLowerCase().indexOf(
+              keyword,
+              start
+            );
+
+            if (index === -1) break;
+
+            found.push({
+              keyword,
+              context: js.slice(
+                Math.max(0, index - 100),
+                Math.min(js.length, index + 200)
+              )
+            });
+
+            start = index + keyword.length;
+            count++;
+          }
+        }
+
+        if (found.length > 0) {
           results.push({
             script: scriptUrl,
-            paths: [...new Set(paths)].slice(0, 50)
+            matches: found
           });
         }
       } catch (error) {
-        // Tohizo ny fikarohana amin'ny script manaraka
+        results.push({
+          script: scriptUrl,
+          error: error.message
+        });
       }
     }
 
@@ -78,7 +122,6 @@ app.get("/api/discover", async (req, res) => {
       scriptsFound: scripts.length,
       possibleEndpoints: results
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -87,11 +130,11 @@ app.get("/api/discover", async (req, res) => {
   }
 });
 
-app.get("/api/matches", async (req, res) => {
-  res.json({
+app.get("/api/matches", (req, res) => {
+  res.status(501).json({
     success: false,
     message:
-      "Mbola tadiavina ny API tena misy ny résultats Bet261.",
+      "Tsy mbola voamarina ny API maka ny résultats Bet261.",
     nextStep: "/api/discover"
   });
 });
